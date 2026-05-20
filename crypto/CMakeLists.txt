@@ -656,12 +656,15 @@ if(FIPS_SHARED)
     if (APPLE)
       set(INJECT_HASH_APPLE_FLAG "-apple")
     endif()
+    if (MINGW)
+      set(INJECT_HASH_MINGW_FLAG "-mingw")
+    endif()
 
     add_custom_command(
       TARGET crypto POST_BUILD
       COMMAND ${GO_EXECUTABLE} run
       ${PROJECT_SOURCE_DIR}/util/fipstools/inject_hash/inject_hash.go
-      -o $<TARGET_FILE:crypto> -in-object $<TARGET_FILE:crypto> ${INJECT_HASH_APPLE_FLAG}
+      -o $<TARGET_FILE:crypto> -in-object $<TARGET_FILE:crypto> ${INJECT_HASH_APPLE_FLAG} ${INJECT_HASH_MINGW_FLAG}
       # The DEPENDS argument to a POST_BUILD rule appears to be ignored. Thus
       # go_executable isn't used (as it doesn't get built), but we list this
       # dependency anyway in case it starts working in some CMake version.
@@ -703,8 +706,15 @@ endif()
 # For now we assume embedded OSes do not have threads. Additionally, the Threads
 # package does not work with Android, but Android does not require any extra
 # parameters to link pthreads.
+# MinGW uses Windows native threads (Win32 API) which require no extra library.
 if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Generic|Android)$")
   find_package(Threads REQUIRED)
+  if(MINGW)
+    # Statically link libwinpthread so the FIPS DLL has no runtime dependency
+    # on libwinpthread-1.dll, which is not present on Windows without MinGW.
+    set_property(TARGET Threads::Threads PROPERTY
+      INTERFACE_LINK_LIBRARIES "-Wl,-Bstatic,-lwinpthread;-Wl,-Bdynamic")
+  endif()
   target_link_libraries(crypto PUBLIC Threads::Threads)
 endif()
 
